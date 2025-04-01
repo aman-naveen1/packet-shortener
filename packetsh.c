@@ -1,65 +1,82 @@
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/init.h>
-#include <linux/netfilter.h>
-#include <linux/netfilter_ipv4.h>
-#include <linux/skbuff.h>
-#include <linux/ip.h>
-#include <linux/tcp.h>
-#include <linux/udp.h>
-#include <linux/slab.h>
+#include <iostream>
+#include <cstring>
+using namespace std;
 
-static struct nf_hook_ops nfho;
+// Structure to represent a network packet
+struct Packet {
+    int id;
+    char data[50];
+    Packet* next; // Pointer for linked list
+};
 
-unsigned int packet_hook(void *priv, struct sk_buff *skb,
-                         const struct nf_hook_state *state) {
-    struct iphdr *ip_header;
-    struct tcphdr *tcp_header;
-    struct udphdr *udp_header;
+// Linked List to store incoming packets
+class PacketQueue {
+public:
+    Packet* head;
     
-    if (!skb)
-        return NF_ACCEPT;
+    PacketQueue() { head = nullptr; }
 
-    ip_header = ip_hdr(skb);
-    if (!ip_header)
-        return NF_ACCEPT;
-
-    if (ip_header->protocol == IPPROTO_TCP) {
-        tcp_header = (struct tcphdr *)((__u32 *)ip_header + ip_header->ihl);
-        if (tcp_header) {
-            printk(KERN_INFO "TCP Packet: Src Port: %u, Dst Port: %u\n",
-                   ntohs(tcp_header->source), ntohs(tcp_header->dest));
-        }
-    } else if (ip_header->protocol == IPPROTO_UDP) {
-        udp_header = (struct udphdr *)((__u32 *)ip_header + ip_header->ihl);
-        if (udp_header) {
-            printk(KERN_INFO "UDP Packet: Src Port: %u, Dst Port: %u\n",
-                   ntohs(udp_header->source), ntohs(udp_header->dest));
-        }
+    void addPacket(int id, const char* data) {
+        Packet* newPacket = new Packet();
+        newPacket->id = id;
+        strcpy(newPacket->data, data);
+        newPacket->next = head;
+        head = newPacket;
     }
 
-    return NF_ACCEPT;
-}
+    void processPackets() {
+        Packet* temp = head;
+        while (temp) {
+            cout << "Processing Packet ID: " << temp->id << ", Data: " << temp->data << endl;
+            temp = temp->next;
+        }
+    }
+};
 
-static int __init packet_shortener_init(void) {
-    nfho.hook = packet_hook;
-    nfho.hooknum = NF_INET_PRE_ROUTING;
-    nfho.pf = PF_INET;
-    nfho.priority = NF_IP_PRI_FIRST;
+// Binary Tree for packet categorization
+struct TreeNode {
+    int packetID;
+    TreeNode* left;
+    TreeNode* right;
+    
+    TreeNode(int id) : packetID(id), left(nullptr), right(nullptr) {}
+};
 
-    nf_register_net_hook(&init_net, &nfho);
-    printk(KERN_INFO "Packet Shortener Module Loaded\n");
+// Binary Search Tree (BST) for fast packet retrieval
+class PacketTree {
+public:
+    TreeNode* root;
+    
+    PacketTree() { root = nullptr; }
+
+    void insert(TreeNode*& root, int packetID) {
+        if (!root) {
+            root = new TreeNode(packetID);
+            return;
+        }
+        if (packetID < root->packetID)
+            insert(root->left, packetID);
+        else
+            insert(root->right, packetID);
+    }
+
+    void addPacket(int packetID) {
+        insert(root, packetID);
+    }
+};
+
+int main() {
+    PacketQueue pq;
+    pq.addPacket(1, "Hello World");
+    pq.addPacket(2, "Satellite Data");
+    pq.processPackets();
+
+    PacketTree pt;
+    pt.addPacket(5);
+    pt.addPacket(2);
+    pt.addPacket(8);
+
+    cout << "Packet Tree created successfully!" << endl;
+    
     return 0;
 }
-
-static void __exit packet_shortener_exit(void) {
-    nf_unregister_net_hook(&init_net, &nfho);
-    printk(KERN_INFO "Packet Shortener Module Unloaded\n");
-}
-
-module_init(packet_shortener_init);
-module_exit(packet_shortener_exit);
-
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Ayy Man");
-MODULE_DESCRIPTION("Kernel Module for Packet Shortening and Filtering");
